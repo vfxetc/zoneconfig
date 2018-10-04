@@ -1,0 +1,299 @@
+
+
+
+zoneconfig
+
+  - Defines a default zone tree, with the "root" having path from `ZONECONFIG_PATH`.
+
+  - `get_zone(name)` calls `zoneconfig.root.subzone(name)`,
+    where `None` returns itself.
+
+  - Proxies a lot of stuff to the "root" config, including:
+    - path
+    - meta_path
+    - various data accessors
+
+  - You can make your own new root trees and give them a path.
+
+Zone
+  
+  Zone.__init__(parent, name)
+
+  Zone.name -> The name, or None for the root.
+  Zone.parent -> The next Zone up, or None.
+  Zone.children -> dict of name to Zone.
+
+  Zone.path -> List of urls to look in at this level (so for `__init__` for
+    ourselves, and the next name for children). These are parsed via `Finder.factory(url)`,
+    and cached under Zone.finders[url] = finder 
+  Zone.meta_path -> List of extra custom `Finder`s.
+
+  Zone.stores -> List of `Store` where data is found.
+
+  Zone.sources -> list of Sources.
+    - When a new source is loaded, it is inserted into the list in `Source.order`
+      order, and then all new sources are evaluates against the zone.
+
+  Sources are loaded in the context of a zone; they do not track their own data.
+  If we want to add smarter stuff later, it will be by taking a copy of the
+  data before and comparing it after, and/or instrumenting collections so we
+  can directly observe their mutations.
+
+  Multiple context/view processors can be via decorators, e.g.:
+
+    @zone.context_processor
+    def something(sdflkjsdf):
+      pass
+
+  Zone.load -> if not already loaded:
+    - starting at our most distant parent, go looking for sources relative to their paths,
+      stuffing their origin and order into `pending_sources`.
+    - `self.pending_sources.sort(key=lambda source: source.order)`
+    - While pending_sources, pop into the front of source, and evalute the new source.
+    - Put another blank "runtime:" source at the front of the chain.
+
+  Zone.subzone(name) -> get the requested Zone under ourselves. Construct it
+    if it doesn't exist. Accepts deep names, and creates them all on the way.
+
+  Zone.view(tags) -> get a View of all matching Stores.
+
+    If there isn't a Store which specifies all of the tags, make one,
+    and put it at the front of the chain.
+
+  Zone.view(tags, chain=False) -> the raw Store.
+
+  # The runtime context/view API.
+  Zone.context_processors
+  Zone.view_pickers
+  Zone.getters
+  Zone.setters
+
+  # Mapping API for data:
+  Zone[key]
+  Zone[key, *context]
+
+  - Context is resolved into a view, and the view is checked for data.
+  - The data is checked for the zone-descriptor protocol:
+
+    def __getzoneitem__(self, key, zone, view???):
+        pass
+
+    def __setzoneitem__(self, ...):
+        pass
+
+    We also have a decorator for that:
+
+    @zoneproperty
+    def something(view, view_tags):
+      # return something
+
+    @something.setter
+    def something(view, value, view_tags):
+      # set something
+
+
+Finder
+  
+  Finder.factory(url) -> looks up class via scheme (or `'file'`) in entry_points,
+    and constructs it.
+
+  .origin -> the parsed URL.
+  .find_loaders(name) -> list of Loader
+
+Loader
+
+  .origin -> the content we represent
+  .order -> our order value
+  .loaded -> boolean
+  .mtime -> last mtime of the data source, or None if we don't know
+  .load_source() -> Source
+    - Load the data.
+
+FileFinder/FileLoader -> a Finder that is backed by files.
+
+  Only allow `$root/foo/bar.ext`
+
+HTTPFinder/HTTPLoader -> a Finder that is backed by an http server.
+  
+  Assume Nginx `autoindex_format json`, and allow for `foo/bar.ext` and `foo.bar.ext`.
+
+Source
+
+  Source.factory(loader, type, content) -> find a class, and construct it.
+
+  .loader -> Loader we came from
+  .eval(zone)
+    - Evalute in the context of the zone. Immediately mutate types, and throw
+    exceptions as we go.
+
+PythonSource
+  Pretty much all that we've described so far.
+JSONSource
+
+
+Store/DataStore/ConfigData
+  
+  Where the data is actually stored. A view is really just a chain of Stores.
+
+  .tags
+
+  Data via Mapping API.
+
+
+View -> a list of DataStore.
+
+  Proxy setting to the first store, and getting to the first store which responds.
+
+
+- the tools themselves define "zones", which are nested namespaces for config.
+  this lets us have a site-wide authority for them, but also for tools to
+  specify their own.
+
+  The tools should be able to define the zone and its contents after the config
+  is actually loaded, OR the zone should not be loaded until the zone declares it.
+
+  zone = zoneconfig.def_zone('sgsession')
+
+  zone.def_key('important_fields', type=list, subtype=str, default=['something'])
+  zone.def_key('pre_create', type=list, subtype='callable')
+
+  zone.load()
+
+  res = zone.call_many('pre_create', entity)
+
+
+
+- can load from many places:
+  - envvars
+  - files
+  - redis
+  - http (cached)
+  - dns (cached)
+
+- ZONECONFIG_PATH is colon delimited list of files or directories to search.
+  - this becomes `zoneconfig.path`.
+  - zone name dots are turned into slashes, so `foo.bar` is looked for in:
+    `$root/foo/bar.{ext}` where `ext` can be `py`, `ini`, `yaml`, `json`, etc..
+  - the contents of the path are always checked live to allow for file changes.
+  - trailing numeric-starting parts of the zone are interpreted as an ordering key
+    e.g. `sgfs.000-def-zone.py` is zone `sgfs` and order key `000-def-zone`
+    This defaults to `('500', path_idx)` (from `for path_idx, path in enumerate(zoneconfig.path):`)
+    Or 50 for `__init__` files.
+
+- Files are not evaluted until loaded by one of:
+    Zone.load() or zoneconfig.load_zone(zone_name)
+
+- Parent zones will be loaded when you ask for children, because the parents can
+  define/modify the children::
+
+    with zone.subzone('foo') as foozone:
+      foozone.define('bar', type=int, default=123)
+
+    A `__init__` source will be looked for at each stage. So a `$root/__init__.py`
+    is the root zone config, and `sgfs/__init__.py` is in the `sgfs` zone.
+
+
+- Python sources will have a `zone` object in their namespace, but also uppercase
+  names will proxy to the zone as well. They will be adapted to the correct type
+  upon assignment.
+
+- those zones can have definitions for what is allowed (in a very argparse
+  or sgcache.config sort of way), or a callback to
+  intercept what is allowed, or allow anything
+
+- Allowable types constrained to something we can YAML. Either the base config
+  or the consumer needs to declare something a callable, otherwise we can't
+  quite tell the different between string entrypoints and string values.
+
+  - int
+  - string literal
+  - string pattern (to be applied with .format in the resolved view)
+  - callable (or string entry_point)
+  - list of any of above
+  - dict of any of above
+
+- magic values in the zones describe meta behaviour:
+
+  def __context_processor__(args):
+      # return some kwargs
+
+- an import-protocol-like mechanism for you to add loaders
+  
+  zoneconfig.meta_path is a list of finders/loaders
+
+- Zone object has a list of Sources that it chains together. one source for
+  each source of data (e.g. data file, HTTP request, etc). The zone may also
+  have a __meta_path__ which is a per-zone meta path. In the case of Python
+  sources, __zone_source__ is the source for itself.
+
+  Zone.add_source(path_or_something, index=0)
+
+- zone names are dot-delimited from the root, e.g. `sgpublish.schema.something`
+  - Names cannot include slashes either; must be valid Python module names.
+  - Zone names are supposed to map to tools and/or usage. Views provide the
+    contextual logic.
+
+- when you get/set values, you can provide context args and kwargs.
+  Args must be turned into kwargs by the zones, and kwargs all may be
+  interpreted or rejected. Those kwargs may or may not be raw view tags. Any
+  whose values are not str or int will be silently dropped.
+
+    def __resolve_context__(zone, context_objs, view_tags):
+      # Turn context objects into view tags.
+      # Default does nothing.
+      for x in context_objs:
+        if isinstance(x, Entity):
+          view_tags.setdefault('sgsession:{}'.format(x.type), x.id)
+
+    def __load_views(zone, tags):
+        # Trigger the dynamic loaders to go looking for tags.
+        zone.load_views(tags)
+    
+    def __view_chain__(zone, tags):
+        # Return a chain of matching views, ordered by their described "order"
+        # and then insertion order into the dict (cause it is an odict!)
+        return zone.view_chain(tags)
+
+
+- context objects select a "view" of that zone, which has partial overrides
+  of the zone for that context. Different views may also have different
+  storage mechanisms and expiry times. E.g. a `zoneconfig:storage=user` could signal
+  that values stored here should go into `~/.config/zoneconfig/{zone}?{view}.yaml`
+
+  with zone.view(('sgsession:Project', 123)) as view:
+    view['launcher_default_version'] = '2018'
+
+  View.order:
+    - Where this view will land when resolved.
+
+  View.tokens:
+    - The dict of tokens that are evaluated against the context to determine
+      if this view applies.
+    - Keys must be strings, and values either strings or ints.
+    - A magic `('_op', 'any')` determines that any token must
+      match, where it defaults to `all` tokens must match.
+    - Deterministic serialization into a modified query syntax that preserves types:
+        `bar=s123&foo=i123&_op=any`
+
+
+
+  Views should be able to be dynamic as well, e.g. hitting Shotgun or HTTP
+  when requested.
+
+- events/callbacks -> https://pyee.readthedocs.io/en/latest/
+
+- sgtk/tank calls these sorts of things "hooks".
+
+
+
+USE CASES
+---------
+
+- Default Maya version for studio/project.
+- Fields that sgsession should call important/parents/etc.
+- Fields that should be included in sgfs tags by default.
+- List of Maya pre-publish and pre-save checks.
+- sgactions actions for a given entity type or even entity.
+- What mounts a computer mounts at boot. It provides it's IP as a context,
+  and the context processor can check it against various netmasks to get view names.
+
