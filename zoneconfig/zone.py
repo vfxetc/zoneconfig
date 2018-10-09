@@ -3,6 +3,7 @@ import collections
 import re
 
 from . import finders
+from . import datastore
 
 
 class Zone(collections.MutableMapping):
@@ -90,16 +91,43 @@ class Zone(collections.MutableMapping):
             return
 
         self.find()
-
         if self.parent is not None:
             self.parent.load()
 
         for loader in self.loaders:
-            print 'HERE', self.name, loader
             source = loader.load()
             self.sources.append(source)
 
         self.loaded = True
+
+    def eval(self):
+
+        if self.evaled:
+            return
+
+        self.load()
+        if self.parent is not None:
+            self.parent.eval()
+
+        for source in self.sources:
+            source.eval(self)
+
+        self.evaled = True
+
+    def view(self, tags, chain=True):
+
+        if chain:
+            raise NotImplementedError()
+
+        if not isinstance(tags, dict):
+            tags = dict(tags or ())
+
+        for store in self.stores:
+            if store.tags == tags:
+                return store
+        store = datastore.DataStore(tags)
+        self.stores.append(store)
+        return store
 
     # === Mapping API ===
 
@@ -110,13 +138,13 @@ class Zone(collections.MutableMapping):
             return default
 
     def __getitem__(self, name):
-        self.load()
+        self.eval()
         if isinstance(name, (tuple, list)):
             context = name[1:]
             name = name[0]
+            view = self.view(context)
         else:
-            context = []
-        view = self.view(context)
+            view = self.view(None, chain=False)
         return view[name]
 
     def __setitem__(self, name, value):

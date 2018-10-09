@@ -72,3 +72,24 @@ class TestBasics(TestCase):
         self.assertEqual(submod.sources[0].url, os.path.join(path, 'package', 'submodule.py'))
         self.assertIn('INDEX = 4', submod.sources[0].content)
 
+    def test_eval(self):
+
+        path = root_path('basics')
+        root = Zone(path=path)
+
+        submod = root.zone('package.submodule')
+        package = root.zone('package')
+
+        self.assertFalse(submod.evaled)
+        submod.eval()
+        self.assertTrue(submod.evaled)
+        self.assertEqual(len(submod.stores), 1)
+        self.assertEqual(submod.stores[0].tags, {})
+        self.assertEqual(submod.stores[0]['index'], 4)
+
+        self.assertEqual(root['index'], 1)
+        self.assertEqual(package['index'], 3)
+        self.assertEqual(submod['index'], 4)
+
+
+
