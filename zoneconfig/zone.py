@@ -11,12 +11,18 @@ class Zone(collections.MutableMapping):
 
     def __init__(self, path=None, _parent=None, _name=None):
         
-        self.parent = _parent
+        #: The ``str`` name of this zone, or ``None`` if this is a root.
         self.name = _name
 
+        #: Our parent zone, or ``None`` if this is a root.
+        self.parent = _parent
+
+        #: A ``dict`` mapping names to child zones.
         self.children = {}
 
         if isinstance(path, string_types):
+            #: A ``list`` of URLs that will be searched by a :class:`Finder`
+            #: for sub-zones.
             self.path = path.split(os.path.pathsep)
         elif path:
             self.path = list(path)

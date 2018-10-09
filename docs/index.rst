@@ -8,6 +8,8 @@ Nothing here yet!
    :maxdepth: 2
    :caption: Contents:
 
+   zone
+
 
 Indices and tables
 ==================
