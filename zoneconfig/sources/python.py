@@ -29,7 +29,7 @@ class PythonSource(BaseSource):
 
     def eval(self, zone):
 
-        store = zone.view(None, chain=False)
+        store = zone.get_store()
         locals_ = Proxy(store, {})
         globals_ = {'zone': zone}
 

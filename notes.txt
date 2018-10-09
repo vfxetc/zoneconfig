@@ -1,43 +1,11 @@
 
 
 
-zoneconfig
-
-  - Defines a default zone tree, with the "root" having path from `ZONECONFIG_PATH`.
-
-  - `get_zone(name)` calls `zoneconfig.root.subzone(name)`,
-    where `None` returns itself.
-
-  - Proxies a lot of stuff to the "root" config, including:
-    - path
-    - meta_path
-    - various data accessors
-
-  - You can make your own new root trees and give them a path.
-
 Zone
   
   Zone.__init__(parent, name)
 
-  Zone.name -> The name, or None for the root.
-  Zone.parent -> The next Zone up, or None.
-  Zone.children -> dict of name to Zone.
-
-  Zone.path -> List of urls to look in at this level (so for `__init__` for
-    ourselves, and the next name for children). These are parsed via `Finder.factory(url)`,
-    and cached under Zone.finders[url] = finder 
   Zone.meta_path -> List of extra custom `Finder`s.
-
-  Zone.stores -> List of `Store` where data is found.
-
-  Zone.sources -> list of Sources.
-    - When a new source is loaded, it is inserted into the list in `Source.order`
-      order, and then all new sources are evaluates against the zone.
-
-  Sources are loaded in the context of a zone; they do not track their own data.
-  If we want to add smarter stuff later, it will be by taking a copy of the
-  data before and comparing it after, and/or instrumenting collections so we
-  can directly observe their mutations.
 
   Multiple context/view processors can be via decorators, e.g.:
 
@@ -45,22 +13,10 @@ Zone
     def something(sdflkjsdf):
       pass
 
-  Zone.load -> if not already loaded:
-    - starting at our most distant parent, go looking for sources relative to their paths,
-      stuffing their origin and order into `pending_sources`.
-    - `self.pending_sources.sort(key=lambda source: source.order)`
-    - While pending_sources, pop into the front of source, and evalute the new source.
-    - Put another blank "runtime:" source at the front of the chain.
-
-  Zone.subzone(name) -> get the requested Zone under ourselves. Construct it
-    if it doesn't exist. Accepts deep names, and creates them all on the way.
-
   Zone.view(tags) -> get a View of all matching Stores.
 
     If there isn't a Store which specifies all of the tags, make one,
     and put it at the front of the chain.
-
-  Zone.view(tags, chain=False) -> the raw Store.
 
   # The runtime context/view API.
   Zone.context_processors
@@ -71,6 +27,11 @@ Zone
   # Mapping API for data:
   Zone[key]
   Zone[key, *context]
+
+  zone.define('important_fields', type=list, subtype=str, default=['something'])
+  zone.define('pre_create', type=list, subtype='callable')
+
+  res = zone.call_many('pre_create', entity)
 
   - Context is resolved into a view, and the view is checked for data.
   - The data is checked for the zone-descriptor protocol:
@@ -92,74 +53,31 @@ Zone
       # set something
 
 
-Finder
-  
-  Finder.factory(url) -> looks up class via scheme (or `'file'`) in entry_points,
-    and constructs it.
 
-  .origin -> the parsed URL.
-  .find(name) -> (pkg_urls, loaders)
+Contexts and Tags
+=================
 
-Loader
+A "context" is a mapping of string keys to arbitrary types.
 
-  .origin -> the content we represent
-  .order -> our order value
-  .loaded -> boolean
-  .mtime -> last mtime of the data source, or None if we don't know
-  .load() -> Source
-    - Load the data.
+Context processors can manipulate the contents of that mapping, turning non-atomic
+values into atomic ones.
 
-FileFinder/FileLoader -> a Finder that is backed by files.
+The "tags" are a mapping of string keys to strings or ints.
 
-  Only allow `$root/foo/bar.ext`
+
+
+
 
 HTTPFinder/HTTPLoader -> a Finder that is backed by an http server.
   
   Assume Nginx `autoindex_format json`, and allow for `foo/bar.ext` and `foo.bar.ext`.
 
-Source
-
-  Source.factory(loader, type, content) -> find a class, and construct it.
-
-  .loader -> Loader we came from
-  .eval(zone)
-    - Evalute in the context of the zone. Immediately mutate types, and throw
-    exceptions as we go.
-
-PythonSource
-  Pretty much all that we've described so far.
 JSONSource
-
-
-Store/DataStore/ConfigData
-  
-  Where the data is actually stored. A view is really just a chain of Stores.
-
-  .tags
-
-  Data via Mapping API.
-
 
 View -> a list of DataStore.
 
   Proxy setting to the first store, and getting to the first store which responds.
 
-
-- the tools themselves define "zones", which are nested namespaces for config.
-  this lets us have a site-wide authority for them, but also for tools to
-  specify their own.
-
-  The tools should be able to define the zone and its contents after the config
-  is actually loaded, OR the zone should not be loaded until the zone declares it.
-
-  zone = zoneconfig.def_zone('sgsession')
-
-  zone.def_key('important_fields', type=list, subtype=str, default=['something'])
-  zone.def_key('pre_create', type=list, subtype='callable')
-
-  zone.load()
-
-  res = zone.call_many('pre_create', entity)
 
 
 
@@ -169,33 +87,6 @@ View -> a list of DataStore.
   - redis
   - http (cached)
   - dns (cached)
-
-- ZONECONFIG_PATH is colon delimited list of files or directories to search.
-  - this becomes `zoneconfig.path`.
-  - zone name dots are turned into slashes, so `foo.bar` is looked for in:
-    `$root/foo/bar.{ext}` where `ext` can be `py`, `ini`, `yaml`, `json`, etc..
-  - the contents of the path are always checked live to allow for file changes.
-  - trailing numeric-starting parts of the zone are interpreted as an ordering key
-    e.g. `sgfs.000-def-zone.py` is zone `sgfs` and order key `000-def-zone`
-    This defaults to `('500', path_idx)` (from `for path_idx, path in enumerate(zoneconfig.path):`)
-    Or 50 for `__init__` files.
-
-- Files are not evaluted until loaded by one of:
-    Zone.load() or zoneconfig.load_zone(zone_name)
-
-- Parent zones will be loaded when you ask for children, because the parents can
-  define/modify the children::
-
-    with zone.subzone('foo') as foozone:
-      foozone.define('bar', type=int, default=123)
-
-    A `__init__` source will be looked for at each stage. So a `$root/__init__.py`
-    is the root zone config, and `sgfs/__init__.py` is in the `sgfs` zone.
-
-
-- Python sources will have a `zone` object in their namespace, but also uppercase
-  names will proxy to the zone as well. They will be adapted to the correct type
-  upon assignment.
 
 - those zones can have definitions for what is allowed (in a very argparse
   or sgcache.config sort of way), or a callback to
@@ -221,17 +112,6 @@ View -> a list of DataStore.
   
   zoneconfig.meta_path is a list of finders/loaders
 
-- Zone object has a list of Sources that it chains together. one source for
-  each source of data (e.g. data file, HTTP request, etc). The zone may also
-  have a __meta_path__ which is a per-zone meta path. In the case of Python
-  sources, __zone_source__ is the source for itself.
-
-  Zone.add_source(path_or_something, index=0)
-
-- zone names are dot-delimited from the root, e.g. `sgpublish.schema.something`
-  - Names cannot include slashes either; must be valid Python module names.
-  - Zone names are supposed to map to tools and/or usage. Views provide the
-    contextual logic.
 
 - when you get/set values, you can provide context args and kwargs.
   Args must be turned into kwargs by the zones, and kwargs all may be

@@ -9,7 +9,7 @@ from ._compat import string_types
 
 class Zone(collections.MutableMapping):
 
-    def __init__(self, path=None, _parent=None, _name=None):
+    def __init__(self, path=None, _name=None, _parent=None):
         
         #: The ``str`` name of this zone, or ``None`` if this is a root.
         self.name = _name
@@ -29,10 +29,7 @@ class Zone(collections.MutableMapping):
         else:
             self.path = []
 
-        # Register against the parent. We do this instead of them so that
-        # it is harder for the user to do it.
-        if self.parent is not None:
-            self.parent.children[self.name] = self
+        self.context_processors = []
 
         self.found = False
         self._finders = {}
@@ -42,7 +39,7 @@ class Zone(collections.MutableMapping):
         self.sources = []
 
         self.evaled = False
-        self.stores = []
+        self.stores = {}
 
     def zone(self, name):
         """Get a child zone.
@@ -56,7 +53,9 @@ class Zone(collections.MutableMapping):
             try:
                 zone = zone.children[part]
             except KeyError:
-                zone = Zone(_parent=zone, _name=part)
+                subz = Zone(_name=part, _parent=zone)
+                zone.children[part] = subz
+                zone = subz
         return zone
 
     def _get_finder(self, url):
@@ -72,6 +71,7 @@ class Zone(collections.MutableMapping):
 
         if self.found:
             return
+        self.found = True
 
         if self.name is not None:
 
@@ -90,12 +90,12 @@ class Zone(collections.MutableMapping):
             self.loaders.extend(finder.loaders)
 
         self.loaders.sort(key=lambda s: s.order)
-        self.found = True
 
     def load(self):
 
         if self.loaded:
             return
+        self.loaded = True
 
         self.find()
         if self.parent is not None:
@@ -105,12 +105,12 @@ class Zone(collections.MutableMapping):
             source = loader.load()
             self.sources.append(source)
 
-        self.loaded = True
 
     def eval(self):
 
         if self.evaled:
             return
+        self.evaled = True
 
         self.load()
         if self.parent is not None:
@@ -119,49 +119,67 @@ class Zone(collections.MutableMapping):
         for source in self.sources:
             source.eval(self)
 
-        self.evaled = True
 
-    def view(self, tags, chain=True):
+    def resolve_tags(self, context):
+        context = dict(context or ())
+        for func in self.context_processors:
+            func(context)
+        tags = []
+        for k, v in context.items():
+            if not isinstance(k, string_types):
+                continue
+            if not (isinstance(k, string_types) or isinstance(k, int)):
+                continue
+            tags.append((k, v))
+        return tuple(sorted(tags))
 
-        if chain:
-            raise NotImplementedError()
+    def get_store(self, context=None, **kwargs):
+        if context and kwargs:
+            raise ValueError("Please provide only args or kwargs.")
+        tags = self.resolve_tags(context or kwargs)
+        try:
+            return self.stores[tags]
+        except KeyError:
+            store = self.stores[tags] = datastore.DataStore(tags)
+            return store
 
-        if not isinstance(tags, dict):
-            tags = dict(tags or ())
+    def view(self, *contexts, **context):
 
-        for store in self.stores:
-            if store.tags == tags:
-                return store
-        store = datastore.DataStore(tags)
-        self.stores.append(store)
-        return store
+        if context and contexts:
+            raise ValueError("Please provide only args or kwargs.")
+
+        contexts = list(contexts) or [context]
+        contexts.append(())
+
+        stores = [self.get_store(context) for context in contexts]
+        return datastore.Chain(stores)
 
     # === Mapping API ===
 
-    def get(self, name, default=None):
-        try:
-            return self[name]
-        except KeyError:
-            return default
-
     def __getitem__(self, name):
         self.eval()
-        if isinstance(name, (tuple, list)):
-            context = name[1:]
-            name = name[0]
-            view = self.view(context)
-        else:
-            view = self.view(None, chain=False)
-        return view[name]
+        store = self.get_store()
+        return store[name]
 
     def __setitem__(self, name, value):
-        raise NotImplementedError()
+        self.eval()
+        store = self.get_store()
+        store[name] = value
+
     def __delitem__(self, name):
-        raise NotImplementedError()
+        self.eval()
+        store = self.get_store()
+        del store[name]
+
     def __iter__(self):
-        raise NotImplementedError()
+        self.eval()
+        store = self.get_store()
+        return iter(store)
+
     def __len__(self):
-        raise NotImplementedError()
+        self.eval()
+        store = self.get_store()
+        return len(store)
 
 
 

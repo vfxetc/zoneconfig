@@ -60,17 +60,17 @@ class TestBasics(TestCase):
         self.assertTrue(root.loaded)
         self.assertEqual(len(root.sources), 1)
         self.assertEqual(root.sources[0].url, os.path.join(path, '__init__.py'))
-        self.assertIn('INDEX = 1', root.sources[0].content)
+        self.assertIn('FOO = 1', root.sources[0].content)
 
         self.assertTrue(package.loaded)
         self.assertEqual(len(package.sources), 1)
         self.assertEqual(package.sources[0].url, os.path.join(path, 'package', '__init__.py'))
-        self.assertIn('INDEX = 3', package.sources[0].content)
+        self.assertIn('FOO = 3', package.sources[0].content)
 
         self.assertTrue(submod.loaded)
         self.assertEqual(len(submod.sources), 1)
         self.assertEqual(submod.sources[0].url, os.path.join(path, 'package', 'submodule.py'))
-        self.assertIn('INDEX = 4', submod.sources[0].content)
+        self.assertIn('FOO = 4', submod.sources[0].content)
 
     def test_eval(self):
 
@@ -84,12 +84,16 @@ class TestBasics(TestCase):
         submod.eval()
         self.assertTrue(submod.evaled)
         self.assertEqual(len(submod.stores), 1)
-        self.assertEqual(submod.stores[0].tags, {})
-        self.assertEqual(submod.stores[0]['index'], 4)
+        self.assertEqual(submod.stores[()].tags, ())
+        self.assertEqual(submod.stores[()]['foo'], 4)
 
-        self.assertEqual(root['index'], 1)
-        self.assertEqual(package['index'], 3)
-        self.assertEqual(submod['index'], 4)
+        self.assertEqual(root['foo'], 1)
+        self.assertEqual(package['foo'], 3)
+        self.assertEqual(submod['foo'], 4)
 
+        self.assertEqual(root['bar'], 'root-bar')
+        self.assertEqual(root['count'], 2)
+
+        self.assertEqual(root.view({'test:basics': 'baz'})['foo'], 'baz-view-foo')
 
 
