@@ -1,6 +1,8 @@
 import os
 import re
 
+from .. import sources
+
 
 class FileFinder(object):
 
@@ -41,6 +43,11 @@ class FileLoader(object):
     def __init__(self, url, order):
         self.url = url
         self.order = order
+
+    def load(self):
+        with open(self.url, 'r') as fh:
+            content = fh.read()
+        return sources.make_source(self.url, content)
 
 
 

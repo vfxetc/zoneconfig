@@ -31,6 +31,9 @@ class Zone(collections.MutableMapping):
         self.loaders = []
 
         self.loaded = False
+        self.sources = []
+
+        self.evaled = False
         self.stores = []
 
     def get_zone(self, name):
@@ -40,13 +43,12 @@ class Zone(collections.MutableMapping):
         :returns: Zone
 
         """
-        parts = name.split('.')
         zone = self
-        for part in parts:
+        for part in name.split('.'):
             try:
                 zone = zone.children[part]
             except KeyError:
-                zone = Zone(_parent=self, _name=part)
+                zone = Zone(_parent=zone, _name=part)
         return zone
 
     def _get_finder(self, url):
@@ -88,6 +90,16 @@ class Zone(collections.MutableMapping):
             return
 
         self.find()
+
+        if self.parent is not None:
+            self.parent.load()
+
+        for loader in self.loaders:
+            print 'HERE', self.name, loader
+            source = loader.load()
+            self.sources.append(source)
+
+        self.loaded = True
 
     # === Mapping API ===
 
