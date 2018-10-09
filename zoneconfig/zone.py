@@ -2,8 +2,9 @@ import os
 import collections
 import re
 
-from . import finders
 from . import datastore
+from . import finders
+from ._compat import string_types
 
 
 class Zone(collections.MutableMapping):
@@ -15,7 +16,7 @@ class Zone(collections.MutableMapping):
 
         self.children = {}
 
-        if isinstance(path, basestring):
+        if isinstance(path, string_types):
             self.path = path.split(os.path.pathsep)
         elif path:
             self.path = list(path)
