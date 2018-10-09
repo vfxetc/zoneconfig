@@ -36,7 +36,7 @@ class Zone(collections.MutableMapping):
         self.evaled = False
         self.stores = []
 
-    def get_zone(self, name):
+    def zone(self, name):
         """Get a child zone.
 
         :param str name: A dot-delimited name of a sub-zone.

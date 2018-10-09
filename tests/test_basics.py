@@ -11,51 +11,64 @@ class TestBasics(TestCase):
         self.assertFalse(root.found)
         root.find()
         self.assertTrue(root.found)
-
-        self.assertEqual(root.path, [os.path.join(path)])
+        self.assertEqual(root.path, [path])
         self.assertEqual(len(root.loaders), 1)
         self.assertEqual(root.loaders[0].url, os.path.join(path, '__init__.py'))
 
-        pkg = root.get_zone('package')
+        module = root.zone('module')
 
-        self.assertFalse(pkg.found)
-        pkg.find()
-        self.assertTrue(pkg.found)
+        self.assertFalse(module.found)
+        module.find()
+        self.assertTrue(module.found)
+        self.assertEqual(module.path, [])
+        self.assertEqual(len(module.loaders), 1)
+        self.assertEqual(module.loaders[0].url, os.path.join(path, 'module.py'))
 
-        self.assertEqual(pkg.path, [os.path.join(path, 'package')])
-        self.assertEqual(len(pkg.loaders), 1)
-        self.assertEqual(pkg.loaders[0].url, os.path.join(path, 'package', '__init__.py'))
+        package = root.zone('package')
 
-        mod = pkg.get_zone('submodule')
-        mod2 = root.get_zone('package.submodule')
-        self.assertIs(mod, mod2)
+        self.assertFalse(package.found)
+        package.find()
+        self.assertTrue(package.found)
+        self.assertEqual(package.path, [os.path.join(path, 'package')])
+        self.assertEqual(len(package.loaders), 1)
+        self.assertEqual(package.loaders[0].url, os.path.join(path, 'package', '__init__.py'))
 
-        self.assertFalse(mod.found)
-        mod.find()
-        self.assertTrue(mod.found)
+        submod = package.zone('submodule')
+        mod2 = root.zone('package.submodule')
+        self.assertIs(submod, mod2)
 
-        self.assertEqual(len(mod.loaders), 1)
-        self.assertEqual(mod.loaders[0].url, os.path.join(path, 'package', 'submodule.py'))
+        self.assertFalse(submod.found)
+        submod.find()
+        self.assertTrue(submod.found)
+        self.assertEqual(len(submod.loaders), 1)
+        self.assertEqual(submod.loaders[0].url, os.path.join(path, 'package', 'submodule.py'))
 
     def test_load(self):
 
         path = root_path('basics')
         root = Zone(path=path)
 
-        mod = root.get_zone('package.submodule')
+        submod = root.zone('package.submodule')
+        package = root.zone('package') # Out of order on purpose.
+        module = root.zone('module') # Out of order on purpose.
 
         self.assertFalse(root.loaded)
-        self.assertFalse(mod.loaded)
+        self.assertFalse(submod.loaded)
         
-        mod.load()
+        submod.load()
 
         self.assertTrue(root.loaded)
         self.assertEqual(len(root.sources), 1)
         self.assertEqual(root.sources[0].url, os.path.join(path, '__init__.py'))
         self.assertIn('INDEX = 1', root.sources[0].content)
 
-        self.assertTrue(mod.loaded)
-        self.assertEqual(len(mod.sources), 1)
-        self.assertEqual(mod.sources[0].url, os.path.join(path, 'package', 'submodule.py'))
-        self.assertIn('INDEX = 4', mod.sources[0].content)
+        self.assertTrue(package.loaded)
+        self.assertEqual(len(package.sources), 1)
+        self.assertEqual(package.sources[0].url, os.path.join(path, 'package', '__init__.py'))
+        self.assertIn('INDEX = 3', package.sources[0].content)
+
+        self.assertTrue(submod.loaded)
+        self.assertEqual(len(submod.sources), 1)
+        self.assertEqual(submod.sources[0].url, os.path.join(path, 'package', 'submodule.py'))
+        self.assertIn('INDEX = 4', submod.sources[0].content)
 
