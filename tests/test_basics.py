@@ -15,8 +15,8 @@ class TestBasics(TestCase):
 
         self.assertTrue(root.found)
         self.assertEqual(root.path, [os.path.join(path)])
-        self.assertEqual(len(root.sources), 1)
-        self.assertEqual(root.sources[0].path, os.path.join(path, '__init__.py'))
+        self.assertEqual(len(root.loaders), 1)
+        self.assertEqual(root.loaders[0].url, os.path.join(path, '__init__.py'))
 
         pkg = root.get_zone('package')
         self.assertFalse(pkg.found)
@@ -25,13 +25,13 @@ class TestBasics(TestCase):
 
         self.assertTrue(pkg.found)
         self.assertEqual(pkg.path, [os.path.join(path, 'package')])
-        self.assertEqual(len(pkg.sources), 1)
-        self.assertEqual(pkg.sources[0].path, os.path.join(path, 'package', '__init__.py'))
+        self.assertEqual(len(pkg.loaders), 1)
+        self.assertEqual(pkg.loaders[0].url, os.path.join(path, 'package', '__init__.py'))
 
         mod = pkg.get_zone('submodule')
         mod.find()
 
-        self.assertEqual(len(mod.sources), 1)
-        self.assertEqual(mod.sources[0].path, os.path.join(path, 'package', 'submodule.py'))
+        self.assertEqual(len(mod.loaders), 1)
+        self.assertEqual(mod.loaders[0].url, os.path.join(path, 'package', 'submodule.py'))
 
 

@@ -98,7 +98,7 @@ Finder
     and constructs it.
 
   .origin -> the parsed URL.
-  .find_loaders(name) -> list of Loader
+  .find(name) -> (pkg_urls, loaders)
 
 Loader
 
@@ -106,7 +106,7 @@ Loader
   .order -> our order value
   .loaded -> boolean
   .mtime -> last mtime of the data source, or None if we don't know
-  .load_source() -> Source
+  .load() -> Source
     - Load the data.
 
 FileFinder/FileLoader -> a Finder that is backed by files.

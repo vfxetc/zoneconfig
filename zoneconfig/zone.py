@@ -2,7 +2,7 @@ import os
 import collections
 import re
 
-from .source import Source
+from . import finders
 
 
 class Zone(collections.MutableMapping):
@@ -27,7 +27,8 @@ class Zone(collections.MutableMapping):
             self.parent.children[self.name] = self
 
         self.found = False
-        self.sources = []
+        self._finders = {}
+        self.loaders = []
 
         self.loaded = False
         self.stores = []
@@ -48,54 +49,37 @@ class Zone(collections.MutableMapping):
                 zone = Zone(_parent=self, _name=part)
         return zone
 
+    def _get_finder(self, url):
+        try:
+            return self._finders[url]
+        except KeyError:
+            finder = finders.make_finder(url)
+            self._finders[url] = finder
+            return finder
+
     def find(self):
         """Look for data sources for this zone on it's path."""
 
         if self.found:
             return
 
-        if self.parent is not None:
+        if self.name is not None:
 
             self.parent.find()
 
-            name_pattern = r'{}(?:(?:\.(\d+)[^\.]*)?(\.py))?$'.format(self.name)
+            for url in self.parent.path:
+                finder = self._get_finder(url)
+                finder.find(self.name)
+                self.path.extend(finder.subpath)
+                self.loaders.extend(finder.loaders)
 
-            for dir_ in self.parent.path:
-                for name in os.listdir(dir_):
+        for url in self.path:
+            finder = self._get_finder(url)
+            finder.find('__init__')
+            # We don't respect __init__ as a subpath.
+            self.loaders.extend(finder.loaders)
 
-                    m = re.match(name_pattern, name)
-                    if not m:
-                        continue
-                    path = os.path.join(dir_, name)
-                    isdir = os.path.isdir(path)
-
-                    raw_order, ext = m.groups()
-                    order = int(raw_order or 500)
-
-                    if ext:
-                        # We only accept files with extensions.
-                        if isdir:
-                            continue
-                        self.sources.append(Source(path, order))
-                    else:
-                        # We only accept directories without extensions.
-                        if not isdir:
-                            continue
-                        self.path.append(path)
-
-        for dir_ in self.path:
-            for name in os.listdir(dir_):
-                m = re.match(r'^__init__(?:\.(\d+)[^\.]*)?\.py$', name)
-                if not m:
-                    continue
-
-                path = os.path.join(dir_, name)
-                order = int(m.group(1) or 50)
-
-                source = Source(path, order)
-                self.sources.append(source)
-
-        self.sources.sort(key=lambda s: s.order)
+        self.loaders.sort(key=lambda s: s.order)
         self.found = True
 
     def load(self):
