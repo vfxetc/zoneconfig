@@ -3,8 +3,6 @@
 
 Zone
   
-  Zone.__init__(parent, name)
-
   Zone.meta_path -> List of extra custom `Finder`s.
 
   Multiple context/view processors can be via decorators, e.g.:
@@ -19,18 +17,37 @@ Zone
     and put it at the front of the chain.
 
   # The runtime context/view API.
-  Zone.context_processors
-  Zone.view_pickers
+  zone.context_processors
+  @zone.context_processor
+  def something(ctx):
+      pass
+
+  Can context processors be global, and/or apply down the chain?
+  It might be keen to have global shotgun adapters which turn shotgun entities
+  into `{type}:{id}` tokens. Maybe.
+
   Zone.getters
+
+  @zone.property
+  def fooprop(zone, context):
+      return something
+
+  @fooprop.setter
+  def fooprop(zone, context, value):
+
+
   Zone.setters
 
-  # Mapping API for data:
-  Zone[key]
-  Zone[key, *context]
 
   zone.define('important_fields', type=list, subtype=str, default=['something'])
   zone.define('pre_create', type=list, subtype='callable')
+  zone.add_constraint(...)
+  zone.add_argument(...)
+  zone.add_specs(...)
 
+  Zone.definitions
+
+  
   res = zone.call_many('pre_create', entity)
 
   - Context is resolved into a view, and the view is checked for data.
